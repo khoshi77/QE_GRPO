@@ -1,4 +1,12 @@
 #!/bin/bash
+#PBS -b 1
+#PBS -T openmpi
+#PBS -v NQSV_MPI_VER=5.0.10/intel2023.0.0-cuda12.9.1
+#PBS -q gpu
+#PBS -A UTSUROLB
+#PBS -l elapstim_req=24:00:00
+#PBS -j o
+#PBS -N inf1
 set -euo pipefail
 
 # ==============================================================================
@@ -28,12 +36,12 @@ set -euo pipefail
 # ==============================================================================
 
 # 推論・評価に使う既存パイプライン (work_SFT/QE_SFT)
-WORK_DIR="/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_4B"
+WORK_DIR="/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B"
 CONFIG="$WORK_DIR/src/config2.yaml"
 CONFIG_BAK="$WORK_DIR/src/config2.yaml.bak"
 
 # GRPO 後のモデル配置ルート (global_step_* を含むディレクトリ)
-DEFAULT_MODEL_DIR="/work/UTSUROLB/utlb_buma2/work_grpo/ckpts/verl_grpo_qwen3_4b_qe_wmt21_enja/0_862118_nqsv"
+DEFAULT_MODEL_DIR="/work/UTSUROLB/utlb_buma2/work_grpo/ckpts/verl_grpo_qwen3_8b_qe_wmt22_ende/0_868943_nqsv"
 MODEL_DIR="${1:-$DEFAULT_MODEL_DIR}"
 INFER_MODE="${2:-all}"   # generate | constrained | all
 

@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # PROJECT_NAME は setup_env.sh より前に export する必要あり
 # (EXPERIMENT_NAME / TENSORBOARD_DIR がこれを参照するため)
-export PROJECT_NAME="${PROJECT_NAME:-verl_grpo_qwen3_4b_qe_wmt21_enja}"
+export PROJECT_NAME="${PROJECT_NAME:-verl_grpo_qwen3_8b_qe_wmt22_ende}"
 
 source "${SCRIPT_DIR}/setup_env.sh"
 
@@ -16,21 +16,22 @@ source "${SCRIPT_DIR}/setup_env.sh"
 # ============================================================================
 
 # モデル
-MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_grpo/sft_ckpts/Qwen3-8B-SFT/checkpoint-500
+MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B/output/Qwen3-8B_labels_5epoch/checkpoint-4250
 # MODEL_PATH=/work/UTSUROLB/utlb_buma2/models/Qwen3-4B-Base
 
 # データ
-TRAIN_FILE=${PROJECT_DIR}/data/qe_wmt21_en_ja/train.parquet
-VAL_FILE=${PROJECT_DIR}/data/qe_wmt21_en_ja/dev.parquet
+TRAIN_FILE=${PROJECT_DIR}/data/qe_wmt22_en_de/train.parquet
+VAL_FILE=${PROJECT_DIR}/data/qe_wmt22_en_de/dev.parquet
 
 # 学習量
 TOTAL_STEPS=null            # null = epoch ベース (total_epochs に従う) / 正の整数で step 数固定
-TOTAL_EPOCHS=10             # 800 件 / batch=16 = 50 step/epoch -> 500 step
+TOTAL_EPOCHS=3             # enja: 800 件 / batch=16 = 50 step/epoch -> 500 step
 
 # 保存・評価
-SAVE_FREQ=50                # 50 step ごと(+最終stepは必ず保存) / -1 で保存しない
-TEST_FREQ=50                # 50 step ごとに dev 評価 / -1 で評価しない
-SAVE_CONTENTS=[model,optimizer,extra,hf_model]
+SAVE_FREQ=200                # enja: 50 step ごと(+最終stepは必ず保存) / -1 で保存しない
+TEST_FREQ=100                # enja: 50 step ごとに dev 評価 / -1 で評価しない
+# SAVE_CONTENTS=[model,optimizer,extra,hf_model]
+SAVE_CONTENTS=[hf_model]
 
 # 報酬関数の挙動 (qe_reward.py の compute_score に渡る reward_kwargs)
 REWARD_METRIC=token_mix     # token_mix / weighted_token_accuracy / bad_f1_safe / mcc / f1_bad / f1_ok / f1_product / f1_macro

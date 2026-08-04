@@ -12,7 +12,9 @@ wheels/
 # Local data and training artifacts
 /data
 /models
-/output
+/outputs
 
 /sft_ckpts
 /ckpts
+/logs
+/tensorboard

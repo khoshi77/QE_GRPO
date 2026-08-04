@@ -62,7 +62,7 @@ def to_verl_record(row: dict, split: str, idx: int) -> dict:
     num_words = len(mt.strip().split())
     return {
         "prompt": build_messages(src, mt),
-        "data_source": "wmt21_en_ja_qe",
+        "data_source": "wmt22_en_de_qe",
         "ability": "qe",
         "reward_model": {"style": "rule", "ground_truth": labels},
         "extra_info": {

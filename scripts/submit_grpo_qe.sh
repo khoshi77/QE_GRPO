@@ -4,7 +4,7 @@
 #PBS -v NQSV_MPI_VER=5.0.10/intel2023.0.0-cuda12.9.1
 #PBS -q gpu
 #PBS -A UTSUROLB
-#PBS -l elapstim_req=6:00:00
+#PBS -l elapstim_req=24:00:00
 #PBS -j o
 #PBS -N grpo_qe
 
@@ -34,7 +34,7 @@ export RUN_SCRIPT=run_grpo_qe.sh
 # PROJECT_NAME を ここで export → mpirun -x で全 rank に伝播させる。
 # こうしないと sub_grpo.sh が setup_env.sh を source した時点で
 # default の "verl_grpo_qwen3_4b_gsm8k" に固定されてしまう。
-export PROJECT_NAME=verl_grpo_qwen3_4b_qe_wmt21_enja
+export PROJECT_NAME=verl_grpo_qwen3_8b_qe_wmt22_ende
 
 module load openmpi/${NQSV_MPI_VER}
 
