@@ -1,6 +1,10 @@
 """
 単語レベル QE のための切り替え可能な GRPO 報酬関数。
 
+``output_format=labels`` と ``output_format=xml_mt`` をサポートする。
+xml_mt では生成XMLを MT 語ごとの OK/BAD に戻して意味品質を計算し、
+MT の copy-exact とタグの開閉整合性を別の format factor として掛ける。
+
 verl の custom_reward_function 規約:
     compute_score(data_source, solution_str, ground_truth, extra_info, **reward_kwargs)
         -> float | dict
@@ -37,6 +41,10 @@ partial(_call_with_kwargs, raw_fn, reward_kwargs) で wrap して呼ぶ。
                       token_mix 系で長さ不一致のとき score から引く値
     invalid_ratio_penalty:
                       token_mix 系で invalid_ratio に掛けて score から引く値
+    xml_copy_mismatch_factor:
+                      xml_mt で MT の復唱が崩れた場合に reward に掛ける倍率
+    xml_unbalanced_factor:
+                      xml_mt で <e> タグが不均衡な場合に reward に掛ける倍率
 
 返り値: dict
     score:        最終的に学習に使う scalar (上記 metric 選択 + ペナルティ適用後)
@@ -45,10 +53,18 @@ partial(_call_with_kwargs, raw_fn, reward_kwargs) で wrap して呼ぶ。
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
 # sklearn は重いが reward は CPU 側で 1 回/step なので OK。
 from sklearn.metrics import f1_score, matthews_corrcoef
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from qe_xml_utils import first_nonempty_line, xml_to_labels  # noqa: E402
 
 
 VALID_METRICS = {
@@ -63,6 +79,7 @@ VALID_METRICS = {
 }
 VALID_LENGTH_POLICY = {"pad_bad", "penalize", "zero"}
 VALID_INVALID_POLICY = {"as_bad", "penalize", "zero"}
+VALID_OUTPUT_FORMATS = {"labels", "xml_mt"}
 
 
 def _parse_pred_labels(text: str, num_words: int) -> tuple[list[str], int, int, bool]:
@@ -155,6 +172,22 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _resolve_output_format(requested: str, extra_info: dict[str, Any]) -> str:
+    if requested not in VALID_OUTPUT_FORMATS:
+        raise ValueError(
+            f"output_format must be one of {sorted(VALID_OUTPUT_FORMATS)}, got {requested!r}"
+        )
+    dataset_format = str(extra_info.get("output_format", requested))
+    if dataset_format not in VALID_OUTPUT_FORMATS:
+        raise ValueError(f"unsupported dataset output_format: {dataset_format!r}")
+    if dataset_format != requested:
+        raise ValueError(
+            "reward/data format mismatch: "
+            f"reward output_format={requested!r}, dataset output_format={dataset_format!r}"
+        )
+    return requested
+
+
 def compute_score(
     data_source: str,
     solution_str: str,
@@ -172,6 +205,9 @@ def compute_score(
     length_mismatch_penalty: float = 0.2,
     invalid_ratio_penalty: float = 0.1,
     exact_format_bonus: float = 0.0,
+    output_format: str = "labels",
+    xml_copy_mismatch_factor: float = 0.25,
+    xml_unbalanced_factor: float = 0.25,
 ) -> dict[str, float]:
     """verl から呼ばれる main entry。"""
     if metric not in VALID_METRICS:
@@ -180,23 +216,60 @@ def compute_score(
         raise ValueError(f"length_mismatch must be one of {VALID_LENGTH_POLICY}, got {length_mismatch!r}")
     if invalid_token not in VALID_INVALID_POLICY:
         raise ValueError(f"invalid_token must be one of {VALID_INVALID_POLICY}, got {invalid_token!r}")
+    for name, factor in (
+        ("xml_copy_mismatch_factor", xml_copy_mismatch_factor),
+        ("xml_unbalanced_factor", xml_unbalanced_factor),
+    ):
+        if not 0.0 <= factor <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1], got {factor}")
 
     extra_info = extra_info or {}
-    # extra_info["num_words"] は preprocess_qe_wmt21.py が必ず入れる。
-    # 念のため fallback として ground_truth から計算。
-    gold_tokens = ground_truth.strip().split()
-    num_words = int(extra_info.get("num_words", len(gold_tokens)))
+    output_format = _resolve_output_format(output_format, extra_info)
 
-    pred_labels, n_invalid, raw_len, len_mismatch = _parse_pred_labels(solution_str, num_words)
+    xml_stats: dict[str, int | bool] | None = None
+    if output_format == "xml_mt":
+        mt = str(extra_info.get("mt", "")).strip()
+        if not mt:
+            raise ValueError("format=xml_mt requires non-empty extra_info['mt']")
+        ref_tokens = mt.split()
+        num_words = int(extra_info.get("num_words", len(ref_tokens)))
+        if num_words != len(ref_tokens):
+            raise ValueError(
+                f"extra_info num_words/mt mismatch: num_words={num_words}, mt={len(ref_tokens)}"
+            )
 
-    # gold は preprocess 時点で正規化済 (OK/BAD のみ) を想定。
-    gold_int = _labels_to_int(gold_tokens[:num_words])
+        gold_tokens, gold_stats = xml_to_labels(ground_truth, ref_tokens)
+        if not gold_stats["copy_exact"] or not gold_stats["tags_balanced"]:
+            raise ValueError(f"invalid xml_mt ground_truth: {gold_stats}")
+
+        annotated = first_nonempty_line(solution_str)
+        pred_labels, xml_stats = xml_to_labels(annotated, ref_tokens)
+        raw_len = int(xml_stats["n_output_words"])
+        len_mismatch = raw_len != num_words
+        n_invalid = 0
+        invalid_ratio = 0.0
+        exact_format = bool(xml_stats["copy_exact"] and xml_stats["tags_balanced"])
+    else:
+        gold_tokens = ground_truth.strip().upper().split()
+        num_words = int(extra_info.get("num_words", len(gold_tokens)))
+        invalid_gold = sorted(set(gold_tokens) - {"OK", "BAD"})
+        if invalid_gold or len(gold_tokens) != num_words:
+            raise ValueError(
+                "invalid labels ground_truth: "
+                f"num_words={num_words}, labels={len(gold_tokens)}, invalid={invalid_gold}"
+            )
+        pred_labels, n_invalid, raw_len, len_mismatch = _parse_pred_labels(
+            solution_str, num_words
+        )
+        invalid_ratio = float(n_invalid / max(raw_len, num_words, 1))
+        exact_format = not len_mismatch and n_invalid == 0
+
+    gold_int = _labels_to_int(gold_tokens)
     pred_int = _labels_to_int(pred_labels)
 
     metrics = _all_metrics(gold_int, pred_int)
     weighted_acc = _weighted_token_accuracy(gold_int, pred_int, w_bad=w_bad, w_ok=w_ok)
     bad_f1_safe = _bad_f1_safe(gold_int, pred_int, metrics["f1_bad"])
-    invalid_ratio = float(n_invalid / max(raw_len, num_words, 1))
 
     if metric == "weighted_token_accuracy":
         base_score = weighted_acc
@@ -204,32 +277,42 @@ def compute_score(
         base_score = bad_f1_safe
     elif metric == "token_mix":
         base_score = token_mix_weight * weighted_acc + bad_f1_weight * bad_f1_safe
-        if not len_mismatch and n_invalid == 0:
+        if exact_format:
             base_score += exact_format_bonus
-        base_score -= length_mismatch_penalty if len_mismatch else 0.0
-        base_score -= invalid_ratio_penalty * invalid_ratio
+        if output_format == "labels":
+            base_score -= length_mismatch_penalty if len_mismatch else 0.0
+            base_score -= invalid_ratio_penalty * invalid_ratio
         base_score = _clamp01(base_score)
     else:
         base_score = _select_score(metrics, metric)
 
-    # --- フォーマット崩れの扱い ---
+    semantic_score = base_score
+    format_factor = 1.0
     score = base_score
-    if len_mismatch:
-        if length_mismatch == "zero":
-            score = 0.0
-        elif length_mismatch == "penalize":
-            score = score * length_penalty
-        # "pad_bad" は no-op (上の正規化のみ)
+    if output_format == "xml_mt":
+        assert xml_stats is not None
+        if not xml_stats["copy_exact"]:
+            format_factor *= xml_copy_mismatch_factor
+        if not xml_stats["tags_balanced"]:
+            format_factor *= xml_unbalanced_factor
+        score *= format_factor
+    else:
+        if len_mismatch:
+            if length_mismatch == "zero":
+                score = 0.0
+            elif length_mismatch == "penalize":
+                score = score * length_penalty
+            # "pad_bad" は no-op (上の正規化のみ)
 
-    if n_invalid > 0:
-        if invalid_token == "zero":
-            score = 0.0
-        elif invalid_token == "penalize":
-            score = score * invalid_penalty
-        # "as_bad" は no-op
+        if n_invalid > 0:
+            if invalid_token == "zero":
+                score = 0.0
+            elif invalid_token == "penalize":
+                score = score * invalid_penalty
+            # "as_bad" は no-op
 
     # 副次メトリックも返す: NaiveRewardManager が tensorboard に流してくれる。
-    return {
+    result = {
         "score": float(score),
         "metric_f1_bad": metrics["f1_bad"],
         "metric_f1_ok": metrics["f1_ok"],
@@ -238,7 +321,19 @@ def compute_score(
         "metric_mcc": metrics["mcc"],
         "metric_weighted_token_accuracy": weighted_acc,
         "metric_bad_f1_safe": bad_f1_safe,
+        "metric_semantic_score": float(semantic_score),
+        "metric_format_factor": float(format_factor),
         "metric_invalid_ratio": invalid_ratio,
         "metric_n_invalid_tokens": float(n_invalid),
         "metric_length_mismatch": 1.0 if len_mismatch else 0.0,
     }
+    if xml_stats is not None:
+        result.update(
+            {
+                "metric_xml_copy_exact": 1.0 if xml_stats["copy_exact"] else 0.0,
+                "metric_xml_tags_balanced": 1.0 if xml_stats["tags_balanced"] else 0.0,
+                "metric_xml_word_count_match": 0.0 if len_mismatch else 1.0,
+                "metric_xml_n_output_words": float(xml_stats["n_output_words"]),
+            }
+        )
+    return result

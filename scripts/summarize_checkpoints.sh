@@ -20,7 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # GRPO 後のモデル配置ルート (global_step_* を含むディレクトリ)
-DEFAULT_MODEL_DIR="/work/UTSUROLB/utlb_buma2/work_grpo/ckpts/verl_grpo_qwen3_8b_qe_wmt22_ende/0_868943_nqsv"
+DEFAULT_MODEL_DIR="/work/UTSUROLB/utlb_buma2/work_grpo/ckpts/verl_grpo_qwen3_8b_qe_wmt22_ende_xml_mt/0_978945_nqsv"
 MODEL_DIR="${1:-$DEFAULT_MODEL_DIR}"
 SUFFIX="${2:-}"
 OUTPUT_FILE="$MODEL_DIR/summary${SUFFIX}.tsv"

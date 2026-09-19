@@ -11,7 +11,7 @@ chat template は学習時と同じ enable_thinking=False, add_generation_prompt
         --data-dir /work/UTSUROLB/utlb_buma2/work_grpo/data/qe_wmt21_en_ja \
         --splits train dev test \
         --prompt-thresholds 768 1024 \
-        --response-thresholds 256 384
+        --response-thresholds 256 384 448 512
 """
 
 from __future__ import annotations
@@ -30,22 +30,40 @@ DEFAULT_DATA_DIR = "/work/UTSUROLB/utlb_buma2/work_grpo/data/qe_wmt21_en_ja"
 
 
 def measure(parquet_path: Path, tok) -> dict[str, np.ndarray]:
-    table = pq.read_table(str(parquet_path)).to_pandas()
     prompt_lens, resp_lens, word_counts = [], [], []
-    for _, row in table.iterrows():
-        msgs = list(row["prompt"])
-        text = tok.apply_chat_template(
-            msgs,
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
+    parquet = pq.ParquetFile(str(parquet_path))
+    # 大きい train parquet を pandas に全展開せず、一定量ずつ処理する。
+    for batch in parquet.iter_batches(
+        batch_size=256,
+        columns=["prompt", "reward_model", "extra_info"],
+    ):
+        rows = batch.to_pylist()
+        prompt_texts = [
+            tok.apply_chat_template(
+                row["prompt"],
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            for row in rows
+        ]
+        ground_truths = [row["reward_model"]["ground_truth"] for row in rows]
+        prompt_lens.extend(
+            tok(
+                prompt_texts,
+                add_special_tokens=False,
+                return_length=True,
+            )["length"]
         )
-        prompt_lens.append(len(tok(text, add_special_tokens=False).input_ids))
-
-        gt = row["reward_model"]["ground_truth"]
-        # gold ラベル列 + EOS 1 トークン分を response 長と見なす
-        resp_lens.append(len(tok(gt, add_special_tokens=False).input_ids) + 1)
-        word_counts.append(int(row["extra_info"]["num_words"]))
+        resp_lens.extend(
+            length + 1
+            for length in tok(
+                ground_truths,
+                add_special_tokens=False,
+                return_length=True,
+            )["length"]
+        )
+        word_counts.extend(int(row["extra_info"]["num_words"]) for row in rows)
 
     return {
         "prompt": np.asarray(prompt_lens),
@@ -77,7 +95,7 @@ def main() -> None:
     parser.add_argument("--prompt-thresholds", nargs="+", type=int,
                         default=[256, 384, 512, 768, 1024])
     parser.add_argument("--response-thresholds", nargs="+", type=int,
-                        default=[64, 96, 128, 256])
+                        default=[64, 96, 128, 256, 384, 448, 512])
     args = parser.parse_args()
 
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
