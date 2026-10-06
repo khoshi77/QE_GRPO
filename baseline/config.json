@@ -1,0 +1,32 @@
+{
+  "model": "gpt-5.2-2025-12-11",
+  "format": "labels",
+  "split": "both",
+  "profile": "eval",
+  "reasoning_effort": "medium",
+  "temperature": "omit",
+  "top_p": "omit",
+  "samples": null,
+  "max_output_tokens": "omit",
+  "api_key_file": "api_key.txt",
+  "data_dir": "data",
+  "output_dir": "results",
+  "timeout": 120,
+  "max_retries": 5,
+  "reward_kwargs": {
+    "metric": "f1_macro",
+    "length_mismatch": "pad_bad",
+    "invalid_token": "as_bad",
+    "length_penalty": 0.5,
+    "invalid_penalty": 0.5,
+    "w_bad": 2.5,
+    "w_ok": 1.0,
+    "token_mix_weight": 0.8,
+    "bad_f1_weight": 0.2,
+    "length_mismatch_penalty": 0.2,
+    "invalid_ratio_penalty": 0.1,
+    "exact_format_bonus": 0.0,
+    "xml_copy_mismatch_factor": 0.25,
+    "xml_unbalanced_factor": 0.25
+  }
+}

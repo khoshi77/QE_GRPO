@@ -15,8 +15,8 @@
 # Reward: `qsub -v REWARD_METRIC=mcc,REWARD_LENGTH_MISMATCH=pad_bad,REWARD_INVALID_TOKEN=as_bad scripts/submit_grpo_qe.sh`
 # Reward: `qsub -v QE_FORMAT=xml_mt,REWARD_METRIC=mcc,REWARD_LENGTH_MISMATCH=pad_bad,REWARD_INVALID_TOKEN=as_bad scripts/submit_grpo_qe.sh`
 
-# Reward: `qsub -v QE_MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B/output/Qwen3-8B_labels_5epoch/checkpoint-2750,REWARD_METRIC=token_mix scripts/submit_grpo_qe.sh`
-# Reward: `qsub -v QE_MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B/output/Qwen3-8B_xml_mt_5epoch/checkpoint-4000,QE_FORMAT=xml_mt,REWARD_METRIC=token_mix scripts/submit_grpo_qe.sh`
+# Reward: `qsub -v QE_MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B/output/Qwen3-8B_labels_5epoch/checkpoint-2750,REWARD_METRIC=mcc scripts/submit_grpo_qe.sh`
+# Reward: `qsub -v QE_MODEL_PATH=/work/UTSUROLB/utlb_buma2/work_SFT/QE_SFT_8B/output/Qwen3-8B_xml_mt_5epoch/checkpoint-2000,QE_FORMAT=xml_mt,REWARD_METRIC=mcc scripts/submit_grpo_qe.sh`
 set -euo pipefail
 
 USER_NAME=$(whoami)

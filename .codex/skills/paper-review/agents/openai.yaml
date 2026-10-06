@@ -1,0 +1,3 @@
+interface:
+  display_name: "Paper Review"
+  short_description: "Review NLP manuscripts for ACL/ARR submission readiness"

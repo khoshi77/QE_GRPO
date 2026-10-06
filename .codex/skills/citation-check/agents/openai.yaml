@@ -1,0 +1,3 @@
+interface:
+  display_name: "Citation Check"
+  short_description: "Verify NLP citations, metadata, and claim support"
